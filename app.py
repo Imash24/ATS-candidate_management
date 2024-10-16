@@ -3,9 +3,11 @@ from flask_sqlalchemy import SQLAlchemy
 from flask_mail import Mail, Message
 from sqlalchemy import text
 from flask_cors import CORS
+from flask_migrate import Migrate
 
 app = Flask(__name__)
 CORS(app)
+
 
 # Configure PostgreSQL database URI
 app.config['SQLALCHEMY_DATABASE_URI'] = 'postgresql://postgres:gm5522@localhost/candidatesdb'
@@ -20,6 +22,7 @@ app.config['MAIL_PASSWORD'] = 'xcvrzyzybxdppoxb'  # Replace with your email pass
 
 mail = Mail(app)
 db = SQLAlchemy(app)
+migrate = Migrate(app, db)
 
 # Define the Candidate model
 class Candidate(db.Model):
@@ -27,6 +30,8 @@ class Candidate(db.Model):
     name = db.Column(db.String(100), nullable=False)
     email = db.Column(db.String(120), unique=True, nullable=False)
     status = db.Column(db.String(50), nullable=False, default="pending")
+    year = db.Column(db.Integer, nullable=False)  # Year of graduation
+    round = db.Column(db.String(50), nullable=False)  # Interview round (e.g., level1, level2)
 
 # Route to check database connection
 @app.route('/')
@@ -42,13 +47,25 @@ def index():
 @app.route('/candidates', methods=['GET'])
 def list_candidates():
     try:
-        candidates = Candidate.query.all()
+        year = request.args.get('year')  # Filter by year
+        round = request.args.get('round')  # Filter by interview round
+
+        # Filter based on query params
+        query = Candidate.query
+        if year:
+            query = query.filter_by(year=year)
+        if round:
+            query = query.filter_by(round=round)
+
+        candidates = query.all()
         result = [
             {
                 "id": candidate.id,
                 "name": candidate.name,
                 "email": candidate.email,
-                "status": candidate.status
+                "status": candidate.status,
+                "year": candidate.year,
+                "round": candidate.round
             }
             for candidate in candidates
         ]
@@ -56,12 +73,17 @@ def list_candidates():
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
-# Route to add a new candidate (for testing purposes)
+# Route to add a new candidate
 @app.route('/add_candidate', methods=['POST'])
 def add_candidate():
     try:
         data = request.get_json()
-        new_candidate = Candidate(name=data['name'], email=data['email'])
+        new_candidate = Candidate(
+            name=data['name'],
+            email=data['email'],
+            year=data['year'],
+            round=data['round']
+        )
         db.session.add(new_candidate)
         db.session.commit()
         return jsonify({"message": "Candidate added successfully!"})
@@ -75,13 +97,13 @@ def update_status(id):
         candidate = Candidate.query.get(id)
         if not candidate:
             return jsonify({"error": "Candidate not found"}), 404
-        
+
         data = request.get_json()
         new_status = data.get('status')
 
         if new_status not in ['selected', 'rejected']:
             return jsonify({"error": "Invalid status"}), 400
-        
+
         # Update the candidate's status
         candidate.status = new_status
         db.session.commit()
@@ -105,6 +127,20 @@ def send_status_email(candidate):
     msg = Message(subject, sender="your_email@example.com", recipients=[candidate.email])
     msg.body = body
     mail.send(msg)
+
+# Route to delete a candidate by id
+@app.route('/delete_candidate/<int:id>', methods=['DELETE'])
+def delete_candidate(id):
+    try:
+        candidate = Candidate.query.get(id)
+        if not candidate:
+            return jsonify({"error": "Candidate not found"}), 404
+
+        db.session.delete(candidate)
+        db.session.commit()
+        return jsonify({"message": "Candidate deleted successfully"})
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
 
 if __name__ == '__main__':
     app.run(debug=True)

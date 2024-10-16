@@ -1,0 +1,42 @@
+version: '3'
+
+services:
+  # Flask Backend Service
+  flask:
+    build:
+      context: .
+      dockerfile: Dockerfile  # Refers to Flask Dockerfile
+    ports:
+      - "5000:5000"  # Expose Flask app on port 5000
+    environment:
+      - SQLALCHEMY_DATABASE_URI=postgresql://postgres:gm5522@db:5432/candidatesdb
+      - FLASK_APP=app.py
+    depends_on:
+      - db
+    volumes:
+      - .:/app
+
+  # npm Frontend Service
+  frontend:
+    build:
+      context: ./candidate-status-app # The path to your frontend directory
+      dockerfile: Dockerfile  # Refers to npm Dockerfile
+    ports:
+      - "3000:3000"  # Expose npm app on port 3000
+    volumes:
+      - ./frontend:/app  # Mount current directory for live code updates
+
+  # PostgreSQL Database Service
+  db:
+    image: postgres:13
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: gm5522
+      POSTGRES_DB: candidatesdb
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+
+volumes:
+  postgres_data:
